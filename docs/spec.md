@@ -6,7 +6,7 @@ DeepSeek V4.1 Flash costs twice as much during its peak windows. On OpenCode Go 
 
 ## Solution
 
-An OpenCode plugin, installed with one command, that treats the model as a policy decision rather than a manual one. It moves managed sessions along a user-editable fallback chain when peak starts, returns them to the primary model when peak ends, and falls through the chain inside the same turn when a provider turns out to be unavailable. A `/peak` page in the terminal shows the current mode, a countdown to the next boundary, the effective model, and the availability of every candidate; the chain is edited there by name, not by hand-written model IDs. Choosing a model manually pins the session, so the plugin never fights the user.
+An OpenCode plugin, installed with one command, that treats the model as a policy decision rather than a manual one. It moves managed sessions along a user-editable fallback chain when peak starts, returns them to their origin model when peak ends, and falls through the chain inside the same turn when a provider turns out to be unavailable. A `/peak` page in the terminal shows the current mode, a countdown to the next boundary, the effective model, and the availability of every candidate; the chain is edited there by name, not by hand-written model IDs. The plugin only owns sessions whose effective model is in its managed set; a manual choice, a command's model, an agent's model, or a project default outside that set all win over the policy.
 
 Default policy:
 
@@ -21,7 +21,7 @@ Default policy:
 ## User Stories
 
 1. As a user, I want a session to move off the primary model when a peak window starts, so that I do not pay peak rates without noticing.
-2. As a user, I want a session to return to the primary model when peak ends, so that I get the model I actually chose for normal work.
+2. As a user, I want a session to return to the model it had before the policy moved it when peak ends, so that my own or my project's model choice is restored.
 3. As a user, I want to see how long until the next boundary, so that I can decide whether to wait or keep working.
 4. As a user, I want to force peak or off-peak for a test, so that I can verify the policy without waiting for 01:00 UTC.
 5. As a user, I want to define custom peak windows, so that the plugin works for providers other than OpenCode Go.
@@ -34,7 +34,7 @@ Default policy:
 12. As a user, I want the whole chain to fit inside the same turn, so that I do not have to resend my prompt after a fallback.
 13. As a user, I want the fallback to happen before any output is produced, so that the transcript never mixes two models mid-answer.
 14. As a user, I want a failure after output has started to be shown honestly, so that I can decide what to do next.
-15. As a user, I want the plugin to return to the primary model after the chain was used for an error and the primary recovered, so that a transient failure does not downgrade me for the rest of the day.
+15. As a user, I want the plugin to return to my origin model after the chain was used for an error and my model recovered, so that a transient failure does not downgrade me for the rest of the day.
 16. As a user, I want to reorder the chain, so that my cost and quality preferences are reflected without editing JSON.
 17. As a user, I want to add and remove candidates, so that I can use a different model when my subscriptions change.
 18. As a user, I want to pick models from the catalog by display name, so that I never have to type a provider/model ID.
@@ -54,6 +54,12 @@ Default policy:
 32. As a user, I want updates through `opencode plugin update`, so that I do not reinstall by hand.
 33. As a user, I want the plugin to store no provider API keys, so that installing it does not create a second secret store.
 34. As a user, I want the interface to work with the keyboard only, so that I can configure it from any terminal.
+35. As a user, I want a project whose default model is outside the managed set to be left untouched, so that installing the plugin does not hijack my project.
+36. As a user, I want a command that picks its own model to be respected, so that one command cannot silently become a peak-switching target.
+37. As a user, I want to see why a session is not managed, so that I can tell "pinned" from "outside the managed set".
+38. As a user, I want an explicit "adopt this session" action, so that I can opt a project into the policy without changing its default model.
+39. As a project maintainer, I want to disable the plugin or give it a different primary in this project, so that the repository's rules win over my personal global setup.
+40. As a user, I want agents not to fight the policy by switching models on their own, so that the automatic behaviour stays predictable.
 
 ## Implementation Decisions
 
@@ -102,6 +108,25 @@ type Config = {
 
 All windows are UTC. `start` and `end` are `HH:MM` and must not cross midnight; the editor rejects or splits an overnight range. The default `deepseek-go` preset is the two documented Go windows.
 
+Per-project overrides use the plugin options form in `opencode.json(c)`, which is the natural place for a repository to state its own rules:
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "github:ValDagon/opencode-peak-switcher",
+      "options": {
+        "enabled": true,
+        "adopt": true,
+        "primary": { "providerID": "opencode-go", "id": "deepseek-v4.1-flash" }
+      }
+    }
+  ]
+}
+```
+
+`enabled: false` makes the plugin inert in that project. `adopt: true` lets it take ownership of sessions even when their model is outside the managed set, which is how a project opts into the policy without changing its default model. `primary`, `chain`, and `force` replace the global values rather than merging. Precedence is project options, then global plugin configuration, then defaults.
+
 ### Desired model
 
 The policy is a pure function of a clock reading, the session record, the catalog, and the cooldown table:
@@ -109,17 +134,19 @@ The policy is a pure function of a clock reading, the session record, the catalo
 ```text
 desired(session, now):
   if session is pinned: return session.model
-  if peak(now) or not usable(primary, now):
+  origin = session.origin ?? session.model
+  if peak(now) or not usable(origin, now):
     for candidate in enabled(chain):
       if usable(candidate.model, now) and fits(candidate.model, session):
         return candidate.model
-    return primary                     # last resort, even at peak
-  return primary
+  if usable(origin, now): return origin
+  if usable(primary, now): return primary
+  return session.model                 # nothing usable; surface, do not guess
 ```
 
 `usable(model, now)` means: the provider is present in the location's catalog, the model is enabled, and it is not in cooldown. `fits` compares the candidate's context limit against the session's recorded token usage, with a safety margin; it is a warning in the editor and a skip at runtime.
 
-Peak is computed from UTC, not local time. The interface displays local time.
+Restoring `origin` rather than always returning to the primary is what keeps a project's own default intact. Peak is computed from UTC, not local time. The interface displays local time.
 
 ### Switching points
 
@@ -141,15 +168,31 @@ Peak is computed from UTC, not local time. The interface displays local time.
 
 The `retry` hook exposes `{ type, message, status?, attempt }` per failure; the OpenRouter `limit_source` is read from the message when present. The built-in retry budget is ten attempts, enough for the four-model chain.
 
-### Pin detection
+### Ownership, pinning, and conflicts
 
-The plugin records the model it last applied per session. At the start of a `prompt` hook it compares the session's current model with that record:
+A user's model can come from five places, and the plugin is the lowest of them. The ladder, highest priority first:
 
-- same → managed, continue.
-- different → the user changed it, so the session becomes pinned.
-- no record, first sight → pinned if the model is neither the primary nor a chain member, otherwise managed.
+| Priority | Source | What the plugin does |
+| --- | --- | --- |
+| 1 | The user picks a model in `/models` for this session | Pins the session; never overrides |
+| 2 | A command that calls `switchModel` before prompting | Treats the resulting change as a pin |
+| 3 | An agent with an explicit model | Treats the session as pinned; child sessions are skipped by default |
+| 4 | The project's `opencode.json(c)` model | Session default; adopted only if it is in the managed set, or `adopt: true` |
+| 5 | The global `opencode.json(c)` model | Same, lower precedence than the project |
+| 6 | The plugin's primary and chain | Applies only to sessions it has adopted |
+| 7 | OpenCode's resolver fallback | Left alone |
 
-A session whose agent has an explicit model is treated as pinned, so agents such as reviewers keep their configured model. Child sessions are skipped unless `manageSubagents` is on. "Resume auto" clears the pin and the record; the next prompt applies the policy.
+The **managed set** is the primary plus every enabled candidate. A session is adopted only when its effective model is in that set, or when the project sets `adopt: true`, or when the user chooses "Adopt this session". At first adoption the plugin records the session's **origin model**. Any later model change the plugin did not make — manual, command, or agent — pins the session, even if the new model is in the managed set.
+
+Detection runs at the start of the `prompt` hook. The plugin compares the session's current model with the model it last applied:
+
+- same → still managed;
+- different → pinned, with the reason recorded and shown in the interface;
+- no record → first sight: adopt if the effective model is in the managed set (or `adopt` is on) and the agent has no explicit model, otherwise leave it alone.
+
+When the session has no model of its own, its effective model is the resolved config default, which is the merged project-then-global value. Restoring `origin` — not always the primary — is what keeps a project's choice intact. "Resume auto" clears the pin but keeps the origin; the next prompt applies the policy. "Adopt this session" records the current model as the origin and takes ownership immediately.
+
+Prose rules in `AGENTS.md` are not parsed. The plugin respects the resolved model, not instructions about models. An optional agent-facing status aid is discussed in Further Notes.
 
 ### Status and control surface
 
@@ -163,7 +206,9 @@ The page shows:
 - force mode (Auto / Peak / Off-peak), local time, next boundary;
 - primary model;
 - each candidate with position, display name, provider, availability reason, context limit, and cooldown;
-- pinned sessions with "Resume auto";
+- managed sessions with their origin model;
+- pinned sessions with the reason and "Resume auto";
+- unmanaged sessions with the reason (`outside the managed set`, `agent model`) and "Adopt this session";
 - the last switch: when, from, to, why.
 
 Editing uses the native dialogs: a searchable model picker grouped by provider and filtered to tool-capable text models, actions to move a candidate up or down, toggle, remove, and add. Peak windows are edited through a preset selector plus a validated text form. Every edit writes the whole config through one RPC call and re-renders from the returned state.
@@ -174,12 +219,13 @@ Editing uses the native dialogs: a searchable model picker grouped by provider a
 getState() -> State
 updateConfig({ config }) -> State
 resumeSession({ sessionID }) -> State
+adoptSession({ sessionID }) -> State
 clearCooldown({ candidateID }) -> State
 // event
 stateChanged -> State
 ```
 
-`State` carries config, the clock reading, peak/next boundary, cooldowns, pinned sessions, and the last action. It deliberately does **not** carry catalog availability: the TUI computes that from its own location catalog, because RPC registrations resolve to the most recently registered plugin instance and are not a safe way to ask "what is available in this project". The server computes availability independently inside each hook.
+`State` carries config, the clock reading, peak/next boundary, cooldowns, per-session ownership (managed, pinned, origin, reason), and the last action. It deliberately does **not** carry catalog availability: the TUI computes that from its own location catalog, because RPC registrations resolve to the most recently registered plugin instance and are not a safe way to ask "what is available in this project". The server computes availability independently inside each hook.
 
 ### Model references
 
@@ -196,7 +242,8 @@ Good tests assert externally observable behaviour: what model a session ends up 
 
 - **Policy, the primary seam:** a pure decision function taking clock, session, catalog, and cooldowns. Table-driven tests cover both Go windows, the exact boundary minutes, weekends, custom overnight-adjacent ranges, availability permutations, cooldown expiry, the all-unavailable case, and the off-peak return.
 - **Error classification:** one table over status codes, messages, and repeat counts, asserting class, cooldown, and switch decision.
-- **Configuration:** round-trip through the store, rejection of duplicate or unknown models, empty chain, overnight windows, and malformed time strings.
+- **Ownership:** a table for first sight, manual change, command change, agent model, project default inside and outside the managed set, `adopt: true`, "Adopt this session", "Resume auto", and origin restoration — including a project whose default is a chain candidate.
+- **Configuration:** round-trip through the store, rejection of duplicate or unknown models, empty chain, overnight windows, malformed time strings, and project options overriding global values.
 - **RPC contract:** `getState` shape, `updateConfig` round-trip, `resumeSession`, and `stateChanged` after an edit. Test the handlers directly; no HTTP needed.
 - **TUI view model:** a pure projection from state plus catalog to rows, availability labels, and countdown text. No snapshot tests of rendered components.
 - **Integration, one spike:** a throwaway plugin against a stub provider that returns `402` once. Assert from the request log that the first attempt used the OpenRouter model and the retry used Free, inside one turn, and that no second user prompt was needed. Record the result in `docs/spikes/`.
@@ -211,6 +258,8 @@ Good tests assert externally observable behaviour: what model a session ends up 
 - Fetching pricing or peak schedules from the network at runtime. The Go preset is versioned data.
 - Switching models after output has started.
 - Managing sessions whose agent has an explicit model, and child/subagent sessions by default.
+- Parsing prose rules in `AGENTS.md`. The plugin respects the resolved model.
+- Automatically adopting a project default that sits outside the managed set; that requires `adopt: true` or an explicit action.
 - Team or multi-user policy; configuration is per server, per user.
 - Judging model quality; the chain order is the user's judgement.
 - OpenRouter's native fallback-model routing; the cascade is plugin-side so it can cross providers.
@@ -219,6 +268,8 @@ Good tests assert externally observable behaviour: what model a session ends up 
 
 ## Further Notes
 
+- Precedence verified in the OpenCode source: a session's own model wins over configuration; project config wins over global; a command with a model calls `switchModel` before prompting; a subagent resolves `agent.model ?? parent.model`. The plugin's ladder follows those facts rather than inventing a parallel one.
+- A skill is not a conflict mechanism: hooks enforce ownership, and a skill can only advise. An optional agent-facing aid — a read-only `peak_status` tool plus a short skill telling the agent not to switch models on its own — can ship later if wanted; it changes no precedence rule.
 - Sources: OpenCode Go pricing/limits (<https://opencode.ai/v2/docs/console/go>), Console free models (<https://opencode.ai/v2/docs/console/models>), plugin hooks and RPC (<https://opencode.ai/v2/docs/build/plugins>, <https://opencode.ai/v2/docs/build/plugins/rpc>), TUI API (<https://opencode.ai/v2/docs/build/plugins/cli>). The Go schedule was verified on 2026-10-23; it is data, not a promise.
 - Mechanic verified in the OpenCode source: `switchModel` projects `SessionTable.model` before the retry loop re-reads the session, and `Outcome.Retry` requires that no output has started. The spike exists to confirm the same holds through the plugin host at runtime.
 - Muse Spark 1.3 Contributor trains on prompts and is unavailable in some regions, including Russia. It is deliberately last.

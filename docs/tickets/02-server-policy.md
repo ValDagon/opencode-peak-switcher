@@ -10,5 +10,8 @@
 - [ ] With force mode set to peak, a prompt on a new session uses the first available chain candidate.
 - [ ] With force mode set to off-peak, the next prompt returns to the primary model.
 - [ ] A candidate whose provider is missing from the catalog is skipped, and the reason is recorded.
+- [ ] A session whose effective model is outside the managed set is never switched.
+- [ ] Off-peak restoration returns the session's origin model, not necessarily the primary.
+- [ ] A project can disable the plugin with `options.enabled: false`, and override `primary` or `chain` without touching the global configuration.
 - [ ] Configuration survives a server restart.
 - [ ] Policy decisions are covered by table-driven tests at the pure-decision seam.

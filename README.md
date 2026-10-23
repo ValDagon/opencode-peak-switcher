@@ -27,6 +27,17 @@ The chain is a default, not a rule. Every step and the order are editable from t
 - Choosing a model manually pins the session. The plugin stops touching it until you choose **Resume auto**.
 - No provider API keys are stored. OpenRouter availability comes from OpenCode's own provider catalog; budget failures are learned from the first failed response.
 
+## What it will not touch
+
+The plugin is deliberately the lowest priority in your configuration:
+
+- A project or global `model` outside the managed set is left alone. Installing the plugin does not hijack a project that uses a different model.
+- Picking a model with `/models` pins that session. So does a command that selects its own model, and a session whose agent has an explicit model.
+- Off-peak the plugin restores the model the session had before it took over — not necessarily the primary.
+- A project can opt out entirely, or give the plugin a different primary, through plugin options in its `opencode.json`.
+
+The full precedence ladder is in [`docs/spec.md`](docs/spec.md#ownership-pinning-and-conflicts).
+
 ## Install
 
 The plugin is distributed directly from GitHub — there is no npm package.

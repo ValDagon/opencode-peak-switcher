@@ -28,6 +28,14 @@ _Avoid_: fallback model, backup
 The model a managed session will use for its next request.
 _Avoid_: current model
 
+**Managed model set**:
+The primary model plus every enabled candidate; the only models the plugin may adopt a session from.
+_Avoid_: allowed models
+
+**Origin model**:
+The model a session had when the plugin first took ownership; it is restored when the policy no longer applies.
+_Avoid_: original model, baseline model
+
 **Managed session**:
 A session whose effective model is chosen by the plugin.
 _Avoid_: auto session

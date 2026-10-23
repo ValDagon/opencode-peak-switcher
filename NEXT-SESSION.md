@@ -35,6 +35,8 @@ There is nothing to install yet: the repository is docs-only, and ticket 02 crea
 - The retry hook has no `kind`; classify by status and message, not by request type.
 - `ctx.storage` is a global key/value namespace, not location-scoped. RPC registration resolves to the most recently registered instance, so keep handlers location-agnostic.
 - Distribution is Git-only: `opencode plugin add github:ValDagon/opencode-peak-switcher`. No npm publish; tags are the versions, and the manifest stays private.
+- Ownership: manage only the primary and enabled chain members. Record the origin at adoption, restore it off-peak, and treat any model change the plugin did not make as a pin.
+- Per-project rules come through plugin `options` (`enabled`, `adopt`, `primary`, `chain`, `force`), which override the global configuration.
 
 ## Known risk
 
