@@ -80,6 +80,14 @@ Installing into OpenCode straight from the working copy is also supported while 
 opencode plugin add /absolute/path/to/opencode-peak-switcher
 ```
 
+To try changes without touching your real OpenCode profile, use the disposable lab:
+
+```sh
+./scripts/lab.sh
+```
+
+It runs a private server with its own config and database, plus a fake provider. See [`docs/testing.md`](docs/testing.md).
+
 The design lives in [`docs/spec.md`](docs/spec.md), the decisions in [`docs/adr/`](docs/adr/), and the vocabulary in [`GLOSSARY.md`](GLOSSARY.md).
 
 ## License

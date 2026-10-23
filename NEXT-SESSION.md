@@ -13,6 +13,16 @@ Start here. The design is frozen; implementation begins with ticket 01.
 
 There is nothing to install yet: the repository is docs-only, and ticket 02 creates the package scaffold. Start by reading the spec, then open ticket 01.
 
+## Lab
+
+Every integration check runs in a disposable profile, never in the daily one:
+
+```sh
+./scripts/lab.sh run "Say ok"
+```
+
+Read [`docs/testing.md`](docs/testing.md) first. Hard rule: never run `opencode plugin add` for a test, and never judge isolation from a CLI command that lacks `--standalone`.
+
 ## Ticket order
 
 ```text
