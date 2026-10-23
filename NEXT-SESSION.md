@@ -22,7 +22,7 @@ There is nothing to install yet: the repository is docs-only, and ticket 02 crea
        │    ├─ 04 chain editor
        │    └─ 05 force + pinning
        └─ 06 error cascade
-            └─ 07 package + release   (also needs 04 and 05)
+            └─ 07 GitHub distribution   (also needs 04 and 05)
 ```
 
 ## Facts to carry into the code
@@ -34,6 +34,7 @@ There is nothing to install yet: the repository is docs-only, and ticket 02 crea
 - Provider availability comes from the catalog: disabled providers are excluded, and `auto` providers count when a connection exists. No key is needed.
 - The retry hook has no `kind`; classify by status and message, not by request type.
 - `ctx.storage` is a global key/value namespace, not location-scoped. RPC registration resolves to the most recently registered instance, so keep handlers location-agnostic.
+- Distribution is Git-only: `opencode plugin add github:ValDagon/opencode-peak-switcher`. No npm publish; tags are the versions, and the manifest stays private.
 
 ## Known risk
 

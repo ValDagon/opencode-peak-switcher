@@ -2,7 +2,7 @@
 
 An OpenCode plugin that moves sessions along a user-editable fallback chain when DeepSeek's peak pricing starts, and moves them back when it ends.
 
-> **Status:** design complete, implementation starts with [`docs/tickets/01-spike-in-turn-fallback.md`](docs/tickets/01-spike-in-turn-fallback.md). The package is not published yet.
+> **Status:** design complete, implementation starts with [`docs/tickets/01-spike-in-turn-fallback.md`](docs/tickets/01-spike-in-turn-fallback.md). Not installable yet.
 
 ## The problem
 
@@ -29,17 +29,19 @@ The chain is a default, not a rule. Every step and the order are editable from t
 
 ## Install
 
-Once published:
-
-```sh
-opencode plugin add opencode-peak-switcher
-```
-
-From source, once the implementation lands:
+The plugin is distributed directly from GitHub — there is no npm package.
 
 ```sh
 opencode plugin add github:ValDagon/opencode-peak-switcher
 ```
+
+Pin a tag or commit for a reproducible install:
+
+```sh
+opencode plugin add github:ValDagon/opencode-peak-switcher#v0.1.0
+```
+
+Unpinned installs can be refreshed with `opencode plugin update`; pinned ones are updated by re-adding a newer tag.
 
 Then run `/peak` in OpenCode.
 
@@ -55,6 +57,12 @@ The package scaffold lands with ticket 02. From then on:
 bun install
 bun test
 bunx tsc --noEmit
+```
+
+Installing into OpenCode straight from the working copy is also supported while developing:
+
+```sh
+opencode plugin add /absolute/path/to/opencode-peak-switcher
 ```
 
 The design lives in [`docs/spec.md`](docs/spec.md), the decisions in [`docs/adr/`](docs/adr/), and the vocabulary in [`GLOSSARY.md`](GLOSSARY.md).

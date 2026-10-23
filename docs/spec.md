@@ -59,13 +59,13 @@ Default policy:
 
 ### Package shape
 
-One npm package, `opencode-peak-switcher`, with three entrypoints:
+One package, `opencode-peak-switcher`, with three entrypoints:
 
 - `.` — server plugin: configuration, policy, hooks, RPC registration.
 - `./rpc` — the shared RPC definition, importable by the TUI entrypoint without pulling server code.
 - `./tui` — the terminal interface: status slots, `/peak` page, editors.
 
-Installed through `opencode plugin add opencode-peak-switcher`. The CLI auto-loads the TUI entrypoint from the package, so `cli.json` is not needed. Until the npm release exists, `opencode plugin add github:ValDagon/opencode-peak-switcher` is the documented alternative.
+Installed straight from GitHub: `opencode plugin add github:ValDagon/opencode-peak-switcher`. There is no npm publication, so the repository is the registry. A tag or commit can be pinned with `#v0.1.0`; an unpinned install follows the default branch and can be refreshed with `opencode plugin update`. The CLI auto-loads the TUI entrypoint from the package, so `cli.json` is not needed. The package manifest stays `private` so an accidental publish cannot happen.
 
 ### Configuration
 
@@ -204,7 +204,8 @@ Good tests assert externally observable behaviour: what model a session ends up 
 
 ## Out of Scope
 
-- A browser or desktop interface. The interface is terminal-native.
+- Browser or desktop interface. The interface is terminal-native.
+- npm registry publication. Distribution is Git-only through `opencode plugin add github:...`.
 - Storing, validating, or rotating provider API keys.
 - Topping up OpenRouter or OpenCode balances, or predicting when a budget resets.
 - Fetching pricing or peak schedules from the network at runtime. The Go preset is versioned data.
