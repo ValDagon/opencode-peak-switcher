@@ -38,6 +38,10 @@ The plugin is deliberately the lowest priority in your configuration:
 
 The full precedence ladder is in [`docs/spec.md`](docs/spec.md#ownership-pinning-and-conflicts).
 
+## For agents
+
+With `agent.statusTool` on (the default), the `peak_status` tool answers "why is my model X?" for the current session: mode, effective model, origin, ownership state, candidate availability, and the last switch. With `agent.skill` on, a short `peak-switcher` skill tells the agent not to switch models on its own and to send policy changes to `/peak`. Both are read-only and can be disabled globally or per project.
+
 ## Install
 
 The plugin is distributed directly from GitHub — there is no npm package.

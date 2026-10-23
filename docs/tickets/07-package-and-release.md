@@ -2,7 +2,7 @@
 
 **What to build:** The shippable form, distributed straight from the repository with no npm publication. One package exporting `.`, `./rpc`, and `./tui`; peer dependencies for the TUI; `opencode plugin add github:ValDagon/opencode-peak-switcher` works on a clean machine; README with the install command, tag pinning, the default chain, the privacy note about Muse, and screenshots of the page. CI runs typecheck and tests. MIT license. A dated tag marks the first usable release.
 
-**Blocked by:** 04, 05, 06.
+**Blocked by:** 04, 05, 06, 08.
 
 **Status:** ready-for-agent
 

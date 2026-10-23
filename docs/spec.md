@@ -60,6 +60,8 @@ Default policy:
 38. As a user, I want an explicit "adopt this session" action, so that I can opt a project into the policy without changing its default model.
 39. As a project maintainer, I want to disable the plugin or give it a different primary in this project, so that the repository's rules win over my personal global setup.
 40. As a user, I want agents not to fight the policy by switching models on their own, so that the automatic behaviour stays predictable.
+41. As a user, I want to ask the agent why my model changed and get the real reason, so that I do not have to open the page for a one-line answer.
+42. As a user, I want to turn the agent-facing status aid off, so that a project that does not want extra tools or skills can remove them.
 
 ## Implementation Decisions
 
@@ -98,6 +100,10 @@ type Config = {
   switchBack: boolean        // default true
   cascadeOutsidePeak: boolean // default true
   manageSubagents: boolean   // default false
+  agent: {
+    statusTool: boolean      // default true: read-only peak_status tool
+    skill: boolean           // default true: the peak-switcher skill
+  }
   cooldowns: {
     rateLimitMinutes: number   // default 15
     budgetMinutes: number      // default 60
@@ -125,7 +131,7 @@ Per-project overrides use the plugin options form in `opencode.json(c)`, which i
 }
 ```
 
-`enabled: false` makes the plugin inert in that project. `adopt: true` lets it take ownership of sessions even when their model is outside the managed set, which is how a project opts into the policy without changing its default model. `primary`, `chain`, and `force` replace the global values rather than merging. Precedence is project options, then global plugin configuration, then defaults.
+`enabled: false` makes the plugin inert in that project. `adopt: true` lets it take ownership of sessions even when their model is outside the managed set, which is how a project opts into the policy without changing its default model. `primary`, `chain`, `force`, and the `agent` flags replace the global values rather than merging. Precedence is project options, then global plugin configuration, then defaults.
 
 ### Desired model
 
@@ -192,7 +198,7 @@ Detection runs at the start of the `prompt` hook. The plugin compares the sessio
 
 When the session has no model of its own, its effective model is the resolved config default, which is the merged project-then-global value. Restoring `origin` — not always the primary — is what keeps a project's choice intact. "Resume auto" clears the pin but keeps the origin; the next prompt applies the policy. "Adopt this session" records the current model as the origin and takes ownership immediately.
 
-Prose rules in `AGENTS.md` are not parsed. The plugin respects the resolved model, not instructions about models. An optional agent-facing status aid is discussed in Further Notes.
+Prose rules in `AGENTS.md` are not parsed. The plugin respects the resolved model, not instructions about models. The optional agent-facing status aid is described under Agent-facing aid.
 
 ### Status and control surface
 
@@ -227,6 +233,15 @@ stateChanged -> State
 
 `State` carries config, the clock reading, peak/next boundary, cooldowns, per-session ownership (managed, pinned, origin, reason), and the last action. It deliberately does **not** carry catalog availability: the TUI computes that from its own location catalog, because RPC registrations resolve to the most recently registered plugin instance and are not a safe way to ask "what is available in this project". The server computes availability independently inside each hook.
 
+### Agent-facing aid
+
+Two optional pieces, both controlled by `agent.statusTool` and `agent.skill` and overridable per project:
+
+- **`peak_status`** — a read-only tool registered under the `peak` namespace. It takes no input and reports, for the calling session: mode and force setting, the next boundary, effective model, origin model, ownership state (`managed`, `pinned` with reason, `not managed` with reason), each candidate's availability or cooldown, and the last switch with its cause. It never switches a model and never writes configuration. The report is produced by a pure formatter so it can be tested without a live session.
+- **The `peak-switcher` skill** — a short skill registered through `ctx.skill.transform` with `autoinvoke: true`. It tells the agent that model selection is owned by the plugin, not to call `session.switchModel` or suggest `/models` unless the user asks, to use `peak_status` when asked why the model changed, to point policy changes at `/peak`, and to respect the precedence ladder rather than treating prose in `AGENTS.md` as an override.
+
+The tool is the precise part; the skill is advice. Neither changes a precedence rule, and with both disabled the plugin has no agent-facing surface at all.
+
 ### Model references
 
 - Primary: `opencode-go/deepseek-v4.1-flash`.
@@ -246,6 +261,7 @@ Good tests assert externally observable behaviour: what model a session ends up 
 - **Configuration:** round-trip through the store, rejection of duplicate or unknown models, empty chain, overnight windows, malformed time strings, and project options overriding global values.
 - **RPC contract:** `getState` shape, `updateConfig` round-trip, `resumeSession`, and `stateChanged` after an edit. Test the handlers directly; no HTTP needed.
 - **TUI view model:** a pure projection from state plus catalog to rows, availability labels, and countdown text. No snapshot tests of rendered components.
+- **Agent aid:** the `peak_status` report is a pure formatter tested for managed, pinned, unmanaged, cooling-down, and all-candidates-failed sessions; a registration test asserts the tool and skill exist only when their flags are on.
 - **Integration, one spike:** a throwaway plugin against a stub provider that returns `402` once. Assert from the request log that the first attempt used the OpenRouter model and the retry used Free, inside one turn, and that no second user prompt was needed. Record the result in `docs/spikes/`.
 - **Prior art:** the repository is greenfield. Establish `bun test` (the host runtime is Bun) with pure modules under `src/policy/` and tests beside them; `tsc --noEmit` is the type gate.
 
@@ -260,6 +276,7 @@ Good tests assert externally observable behaviour: what model a session ends up 
 - Managing sessions whose agent has an explicit model, and child/subagent sessions by default.
 - Parsing prose rules in `AGENTS.md`. The plugin respects the resolved model.
 - Automatically adopting a project default that sits outside the managed set; that requires `adopt: true` or an explicit action.
+- An agent tool that changes policy, pins, resumes, or switches models. The agent-facing surface is read-only.
 - Team or multi-user policy; configuration is per server, per user.
 - Judging model quality; the chain order is the user's judgement.
 - OpenRouter's native fallback-model routing; the cascade is plugin-side so it can cross providers.
@@ -269,7 +286,7 @@ Good tests assert externally observable behaviour: what model a session ends up 
 ## Further Notes
 
 - Precedence verified in the OpenCode source: a session's own model wins over configuration; project config wins over global; a command with a model calls `switchModel` before prompting; a subagent resolves `agent.model ?? parent.model`. The plugin's ladder follows those facts rather than inventing a parallel one.
-- A skill is not a conflict mechanism: hooks enforce ownership, and a skill can only advise. An optional agent-facing aid — a read-only `peak_status` tool plus a short skill telling the agent not to switch models on its own — can ship later if wanted; it changes no precedence rule.
+- A skill is not a conflict mechanism: hooks enforce ownership, and a skill can only advise. The agent-facing aid ships as ticket 08 — a read-only `peak_status` tool plus a short skill — and changes no precedence rule.
 - Sources: OpenCode Go pricing/limits (<https://opencode.ai/v2/docs/console/go>), Console free models (<https://opencode.ai/v2/docs/console/models>), plugin hooks and RPC (<https://opencode.ai/v2/docs/build/plugins>, <https://opencode.ai/v2/docs/build/plugins/rpc>), TUI API (<https://opencode.ai/v2/docs/build/plugins/cli>). The Go schedule was verified on 2026-10-23; it is data, not a promise.
 - Mechanic verified in the OpenCode source: `switchModel` projects `SessionTable.model` before the retry loop re-reads the session, and `Outcome.Retry` requires that no output has started. The spike exists to confirm the same holds through the plugin host at runtime.
 - Muse Spark 1.3 Contributor trains on prompts and is unavailable in some regions, including Russia. It is deliberately last.

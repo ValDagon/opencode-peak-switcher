@@ -21,8 +21,9 @@ There is nothing to install yet: the repository is docs-only, and ticket 02 crea
        ├─ 03 status surface
        │    ├─ 04 chain editor
        │    └─ 05 force + pinning
-       └─ 06 error cascade
-            └─ 07 GitHub distribution   (also needs 04 and 05)
+       ├─ 06 error cascade
+       └─ 08 agent status aid
+04, 05, 06, 08 ──▶ 07 GitHub distribution
 ```
 
 ## Facts to carry into the code
@@ -37,6 +38,7 @@ There is nothing to install yet: the repository is docs-only, and ticket 02 crea
 - Distribution is Git-only: `opencode plugin add github:ValDagon/opencode-peak-switcher`. No npm publish; tags are the versions, and the manifest stays private.
 - Ownership: manage only the primary and enabled chain members. Record the origin at adoption, restore it off-peak, and treat any model change the plugin did not make as a pin.
 - Per-project rules come through plugin `options` (`enabled`, `adopt`, `primary`, `chain`, `force`), which override the global configuration.
+- The agent-facing aid is read-only: `peak_status` reports, the `peak-switcher` skill advises, and `agent.statusTool` / `agent.skill` turn them off.
 
 ## Known risk
 
